@@ -2461,22 +2461,6 @@ void free_rbt_node(uint64_t *node_to_free) {
 // --------- RED-BLACK TREE NODE API DECLARATIONS ------------------
 // -----------------------------------------------------------------
 
-// Getters para los campos de un nodo del RBT.
-uint64_t get_rbt_node_color(uint64_t *node);
-uint64_t *get_rbt_node_parent(uint64_t *node);
-uint64_t *get_rbt_node_left(uint64_t *node);
-uint64_t *get_rbt_node_right(uint64_t *node);
-uint64_t *get_rbt_node_context(uint64_t *node);
-
-// Setters para los campos de un nodo del RBT.
-void set_rbt_node_color(uint64_t *node, uint64_t color);
-void set_rbt_node_parent(uint64_t *node, uint64_t *parent);
-void set_rbt_node_left(uint64_t *node, uint64_t *left);
-void set_rbt_node_right(uint64_t *node, uint64_t *right);
-void set_rbt_node_context(uint64_t *node, uint64_t *context);
-
-
-// Declaraciones de la API 
 // Inicializa las variables globales del RBT (rbt_root, RBT_NIL, free_rbt_nodes)
 void rbt_init();
 // Inserta un nuevo nodo en el árbol.
@@ -2494,8 +2478,9 @@ uint64_t *create_context_and_rbt_node(uint64_t *parent, uint64_t *vctxt);
 
 // Orquesta la eliminación de un machine_context Y su nodo RBT asociado.
 void delete_context_and_rbt_node(uint64_t *context_to_delete);
+
 // -----------------------------------------------------------------
-// -------------- RED-BLACK TREE NODE API HELPERS ------------------
+// ----------------- RED-BLACK TREE NODE HELPERS -------------------
 // -----------------------------------------------------------------
 
 void left_rotate(uint64_t *x_node);

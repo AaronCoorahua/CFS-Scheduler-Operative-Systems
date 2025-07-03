@@ -4,7 +4,6 @@ uint64_t* foo2;
 int main(int argc, char** argv) {
     uint64_t  tid;
 
-    sched_class(1);
     foo = "Hello MAIN!     ";
     foo2 = "Hello FORK!     ";
 
