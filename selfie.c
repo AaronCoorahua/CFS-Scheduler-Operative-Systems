@@ -1322,6 +1322,15 @@ void implement_sched(uint64_t *context);
 void emit_tick();
 void implement_tick(uint64_t *context);
 
+void emit_sleep();
+void implement_sleep(uint64_t *context);
+
+void emit_priority();
+void implement_priority(uint64_t *context);
+
+void emit_alpha();
+void implement_alpha(uint64_t *context);
+
 uint64_t is_boot_level_zero();
 
 // ------------------------ GLOBAL CONSTANTS -----------------------
@@ -1342,6 +1351,10 @@ uint64_t SYSCALL_FORK = 23;
 uint64_t SYSCALL_LOCK = 31;
 uint64_t SYSCALL_UNLOCK = 32;
 uint64_t SYSCALL_TICK = 4;
+
+uint64_t SYSCALL_SLEEP = 10;
+uint64_t SYSCALL_PRIORITY = 11;
+uint64_t SYSCALL_ALPHA = 12;
 
 /* DIRFD_AT_FDCWD corresponds to AT_FDCWD in fcntl.h and
    is passed as first argument of the openat system call
@@ -2035,6 +2048,7 @@ uint64_t model = 0;    // flag for modeling code
 // number of instructions from context switch to timer interrupt
 // CAUTION: interrupting kernel code may cause race conditions
 // TODO: implement proper interrupt controller to turn interrupts on and off
+//uint64_t TIMESLICE = 100000;
 uint64_t TIMESLICE = 100000;
 
 uint64_t TIMEROFF = 0; // must be 0 to turn off timer interrupt
@@ -2220,6 +2234,9 @@ void reset_profiler()
 // -----------------------------------------------------------------
 // *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~
 
+uint64_t min_vruntime = 0;
+uint64_t CFS_ALPHA = 1000;
+
 // -----------------------------------------------------------------
 // ------------------------ MACHINE CONTEXTS -----------------------
 // -----------------------------------------------------------------
@@ -2272,11 +2289,14 @@ uint64_t *delete_context(uint64_t *context, uint64_t *from);
 // +----+-----------------+
 // | 32 | id              | process id
 // | 33 | ptr_parent      | pointer to parent
+// | 34 | priority        | context priority
+// | 35 | vruntime        | virtual runtime
+// +----+-----------------+
 
 // number of entries of a machine context:
 // 14 uint64_t + 6 uint64_t* + 1 char* + 7 uint64_t + 2 uint64_t* + 2 uint64_t entries
 // extended in the symbolic execution engine and the Boehm garbage collector
-uint64_t CONTEXTENTRIES = 34;
+uint64_t CONTEXTENTRIES = 36;
 
 uint64_t *allocate_context(); // declaration avoids warning in the Boehm garbage collector
 
@@ -2322,6 +2342,8 @@ uint64_t gcs_in_period(uint64_t *context) { return (uint64_t)(context + 30); }
 uint64_t use_gc_kernel(uint64_t *context) { return (uint64_t)(context + 31); }
 uint64_t id(uint64_t *context) { return (uint64_t)(context + 32); }
 uint64_t ptr_parent(uint64_t *context) { return (uint64_t)(context + 33); }
+uint64_t priority(uint64_t *context) { return (uint64_t)(context + 34); }
+uint64_t vruntime(uint64_t *context) { return (uint64_t)(context + 35); }
 
 uint64_t *get_next_context(uint64_t *context) { return (uint64_t *)*context; }
 uint64_t *get_prev_context(uint64_t *context) { return (uint64_t *)*(context + 1); }
@@ -2360,6 +2382,8 @@ uint64_t get_use_gc_kernel(uint64_t *context) { return *(context + 31); }
 
 uint64_t get_id(uint64_t *context) { return *(context + 32); }
 uint64_t* get_ptr_parent(uint64_t *context) { return (uint64_t *)*(context + 33); }
+uint64_t get_priority(uint64_t *context) { return *(context + 34); }
+uint64_t get_vruntime(uint64_t *context) { return *(context + 35); }
 
 void set_next_context(uint64_t *context, uint64_t *next) { *context = (uint64_t)next; }
 void set_prev_context(uint64_t *context, uint64_t *prev) { *(context + 1) = (uint64_t)prev; }
@@ -2398,6 +2422,8 @@ void set_use_gc_kernel(uint64_t *context, uint64_t use) { *(context + 31) = use;
 
 void set_id(uint64_t *context, uint64_t new_pid) { *(context + 32) = new_pid; }
 void set_ptr_parent(uint64_t *context, uint64_t* parent) { *(context + 33) = (uint64_t)parent; }
+void set_priority(uint64_t *context, uint64_t p) { *(context + 34) = p; }
+void set_vruntime(uint64_t *context, uint64_t vr) { *(context + 35) = vr; }
 
 // -----------------------------------------------------------------
 // ---------------------- RED BLACK TREE NODE ----------------------
@@ -2476,8 +2502,8 @@ void print_rbt();
 // Orquesta la creación de un machine_context Y su nodo RBT asociado.
 uint64_t *create_context_and_rbt_node(uint64_t *parent, uint64_t *vctxt);
 
-// Orquesta la eliminación de un machine_context Y su nodo RBT asociado.
-void delete_context_and_rbt_node(uint64_t *context_to_delete);
+// Orquesta la eliminación del RBT asociado a un contexto.
+void delete_rbt_node(uint64_t *context_to_delete);
 
 // -----------------------------------------------------------------
 // ----------------- RED-BLACK TREE NODE HELPERS -------------------
@@ -2547,6 +2573,7 @@ void reset_microkernel()
   current_context = (uint64_t *)0;
 
   while (used_contexts != (uint64_t *)0){
+    delete_rbt_node(used_contexts);
     used_contexts = delete_context(used_contexts, used_contexts);
   }
 }
@@ -6996,6 +7023,12 @@ void selfie_compile()
   emit_lock();
   emit_unlock();
 
+  emit_sleep();
+
+  emit_priority();
+
+  emit_alpha();
+
   emit_tick();
 
   if (GC_ON)
@@ -8357,7 +8390,9 @@ void implement_exit(uint64_t *context)
   signed_int_exit_code = *(get_regs(context) + REG_A0);
 
   set_exit_code(context, sign_shrink(signed_int_exit_code, SYSCALL_BITWIDTH));
+
   used_contexts = delete_context(context, used_contexts);
+  delete_rbt_node(context);
 
 }
 
@@ -8413,6 +8448,88 @@ void emit_lock()
   emit_jalr(REG_ZR, REG_RA, 0);
 }
 
+void emit_priority(){
+  create_symbol_table_entry(GLOBAL_TABLE, string_copy("priority"),
+                            0, PROCEDURE, VOID_T, 1, code_size);
+
+  emit_load(REG_A0, REG_SP, 0); // value of priority
+  emit_addi(REG_SP, REG_SP, WORDSIZE);
+
+   emit_addi(REG_A7, REG_ZR, SYSCALL_PRIORITY);
+
+  emit_ecall();
+
+  emit_jalr(REG_ZR, REG_RA, 0);
+}
+
+void implement_priority(uint64_t *context){
+  uint64_t priority;
+
+  priority = *(get_regs(context)+REG_A0);
+  set_priority(context, priority);
+  //printf("La nueva prioridad es %lu \n", get_priority(context));
+  set_pc(context,get_pc(context)+INSTRUCTIONSIZE);  
+
+}
+
+
+void emit_alpha(){
+  create_symbol_table_entry(GLOBAL_TABLE, string_copy("alpha"),
+                            0, PROCEDURE, VOID_T, 1, code_size);
+
+  emit_load(REG_A0, REG_SP, 0); // value of alpha
+  emit_addi(REG_SP, REG_SP, WORDSIZE);
+
+   emit_addi(REG_A7, REG_ZR, SYSCALL_ALPHA);
+
+  emit_ecall();
+
+  emit_jalr(REG_ZR, REG_RA, 0);
+}
+
+void implement_alpha(uint64_t *context){
+  uint64_t alpha;
+
+  alpha = *(get_regs(context)+REG_A0);
+  CFS_ALPHA = alpha;
+
+  //printf("El nuevo alpha es %lu\n", CFS_ALPHA);
+  set_pc(context,get_pc(context)+INSTRUCTIONSIZE);  
+
+}
+
+
+void emit_sleep(){
+  create_symbol_table_entry(GLOBAL_TABLE, string_copy("sleep"),
+                            0, PROCEDURE, VOID_T, 1, code_size);
+
+  emit_load(REG_A0, REG_SP, 0); // value to sleep
+  emit_addi(REG_SP, REG_SP, WORDSIZE);
+
+   emit_addi(REG_A7, REG_ZR, SYSCALL_SLEEP);
+
+  emit_ecall();
+
+  emit_jalr(REG_ZR, REG_RA, 0);
+}
+
+uint64_t GLOBAL_SLEEP = (uint64_t)0;
+
+void implement_sleep(uint64_t *context){
+  uint64_t sleep_time;
+
+
+  if (GLOBAL_SLEEP == (uint64_t)0){
+    sleep_time = *(get_regs(context)+REG_A0);
+    GLOBAL_SLEEP = global_ctr + sleep_time;
+  } else {
+    if(global_ctr < GLOBAL_SLEEP){
+      return;
+    } else {
+      set_pc(context,get_pc(context)+INSTRUCTIONSIZE);  
+    } 
+  }
+}
 
 void emit_fork(){
   create_symbol_table_entry(GLOBAL_TABLE, string_copy("fork"),
@@ -11241,6 +11358,9 @@ void do_ecall()
     } else if (*(registers + REG_A7) == SYSCALL_FORK){
       write_register(REG_A0);
     }
+    else if (*(registers + REG_A7) == SYSCALL_SLEEP){}
+    else if (*(registers + REG_A7) == SYSCALL_PRIORITY){}
+    else if (*(registers + REG_A7) == SYSCALL_ALPHA){}
     else if (*(registers + REG_A7) == SYSCALL_LOCK){}
     else if (*(registers + REG_A7) == SYSCALL_UNLOCK){}
     else if (*(registers + REG_A7) == SYSCALL_SCHED){}
@@ -12413,6 +12533,12 @@ void init_context(uint64_t *context, uint64_t *parent, uint64_t *vctxt)
   set_parent(context, parent);
   set_virtual_context(context, vctxt);
 
+  set_priority(context, 10);
+
+  // Asignar el vruntime mínimo global.
+  // Esto asegura que los nuevos procesos sean "justos" y se ejecuten pronto.
+  set_vruntime(context, min_vruntime);
+
   // profile
   set_ic_all(context, 0);
   set_lc_malloc(context, 0);
@@ -12838,19 +12964,22 @@ void rbt_init() {
 
 //rbt_insert: Inserta un rbt_node en el árbol, usando el ID del contexto como clave.
 void rbt_insert(uint64_t *node_to_insert) {
-    uint64_t *y_node = RBT_NIL;
-    uint64_t *x_node = rbt_root;
+    uint64_t *y_node;
+    uint64_t *x_node;
+    uint64_t key_to_insert;
     
+    y_node = RBT_NIL;
+    x_node = rbt_root;
     // Obtenemos el ID del contexto asociado al nodo que queremos insertar.
     // Esta será nuestra clave de ordenación.
-    uint64_t key_to_insert = get_id(get_rbt_node_context(node_to_insert));
+    key_to_insert = get_vruntime(get_rbt_node_context(node_to_insert));
 
     // Recorremos el árbol para encontrar la hoja correcta donde insertar.
     while (x_node != RBT_NIL) {
         y_node = x_node; // y_node será el futuro padre del nuevo nodo.
         
         // Comparamos la clave del nuevo nodo con la clave del nodo actual del árbol.
-        if (key_to_insert < get_id(get_rbt_node_context(x_node))) {
+        if (key_to_insert < get_vruntime(get_rbt_node_context(x_node))) {
             x_node = get_rbt_node_left(x_node);
         } else {
             x_node = get_rbt_node_right(x_node);
@@ -12863,7 +12992,7 @@ void rbt_insert(uint64_t *node_to_insert) {
     // Enlazamos al padre con su nuevo hijo.
     if (y_node == RBT_NIL) {
         rbt_root = node_to_insert; // El árbol estaba vacío.
-    } else if (key_to_insert < get_id(get_rbt_node_context(y_node))) {
+    } else if (key_to_insert < get_vruntime(get_rbt_node_context(y_node))) {
         set_rbt_node_left(y_node, node_to_insert);
     } else {
         set_rbt_node_right(y_node, node_to_insert);
@@ -12997,8 +13126,9 @@ void print_rbt() {
                     printf("  "); 
                     i = i + 1;
                 }
-                printf("- ID:%lu (Color:%s)\n", 
-                    get_id(get_rbt_node_context(current_node)),
+                printf("ID %lu - VRUNTIME:%lu (Color:%s)\n",
+                    get_id(get_rbt_node_context(current_node)), 
+                    get_vruntime(get_rbt_node_context(current_node)),
                     (get_rbt_node_color(current_node) == RBT_RED ? "R" : "B"));
                 
                 current_node = get_rbt_node_right(current_node);
@@ -13015,7 +13145,7 @@ void print_rbt() {
 // Orquesta la eliminación de un machine_context Y su nodo RBT asociado.
 
 uint64_t *create_context_and_rbt_node(uint64_t *parent, uint64_t *vctxt) {
-    // Crea el machine_context usando tu función original.
+    // Crea el machine_context.
     uint64_t *new_machine_context = create_context(parent, vctxt);
     // Crea un nodo para el RBT.
     uint64_t *new_rbt_node = allocate_rbt_node();
@@ -13024,16 +13154,15 @@ uint64_t *create_context_and_rbt_node(uint64_t *parent, uint64_t *vctxt) {
     // Inserta el nuevo nodo en el árbol del planificador.
     rbt_insert(new_rbt_node);
     // Devolvemos el contexto.
-    print_rbt();
+    //print_rbt();
     return new_machine_context;
 }
 
 
-// Orquesta la creación de un machine_context Y su nodo RBT asociado.
-// Elimina el rbt_node del árbol y lo recicla.
-// Elimina el machine_context de la lista enlazada 'used_contexts' y lo recicla.
 
-void delete_context_and_rbt_node(uint64_t *context_to_delete)
+// Elimina el rbt_node del árbol y lo recicla.
+
+void delete_rbt_node(uint64_t *context_to_delete)
 {
     uint64_t *node_to_delete = rbt_search_by_id(get_id(context_to_delete));
 
@@ -13460,6 +13589,12 @@ uint64_t handle_system_call(uint64_t *context)
     implement_sched(context);
   else if (a7 == SYSCALL_TICK)
     implement_tick(context);
+  else if (a7 == SYSCALL_SLEEP)
+    implement_sleep(context);
+  else if (a7 == SYSCALL_PRIORITY)
+    implement_priority(context);
+  else if (a7 == SYSCALL_ALPHA)
+    implement_alpha(context);
   else
   {
     printf("%s: unknown system call %lu\n", selfie_name, a7);
@@ -13601,43 +13736,62 @@ uint64_t mipster(uint64_t *to_context)
 }
 */
 
-uint64_t mipster(uint64_t *initial_context)
+
+uint64_t mipster(uint64_t *to_context)
 {
   uint64_t timeout;
   uint64_t *from_context;
-  uint64_t *to_context;
   uint64_t *best_node;
+  uint64_t vruntime_0;
+  uint64_t vruntime_1;
 
-  to_context = initial_context;
+  to_context = get_rbt_node_context(rbt_find_minimum());
   from_context = (uint64_t *)0; 
+
+  timeout = TIMESLICE;
 
   while (1)
   {
-    best_node = rbt_find_minimum();
 
-    if (best_node == RBT_NIL) {
-      if (from_context != (uint64_t*)0){
-        return get_exit_code(from_context);
-      }
-      else{
-        return EXITCODE_NOERROR;
-      }
-    }
-    
-    to_context = get_rbt_node_context(best_node);
-    
-    timeout = TIMESLICE;
+    //print_rbt();
+
+
     from_context = mipster_switch(to_context, timeout);
 
+    best_node = rbt_find_minimum();
+
+    rbt_delete(best_node);
+
+    vruntime_0 = get_vruntime(get_rbt_node_context(best_node));
+
+    vruntime_1 = vruntime_0 + (TIMESLICE/(get_priority(get_rbt_node_context(best_node))*CFS_ALPHA));
+    set_vruntime(get_rbt_node_context(best_node), vruntime_1);
+
+    rbt_insert(best_node);
+
+    
     if (get_parent(from_context) != MY_CONTEXT)
     {
-      delete_context_and_rbt_node(from_context);
       to_context = get_parent(from_context);
       timeout = TIMEROFF;
     }
     else if (handle_exception(from_context) == EXIT)
     {
-      delete_context_and_rbt_node(from_context);
+      return get_exit_code(from_context);
+    } 
+    
+    else 
+    {
+      //printf("vruntime anterior: %lu\n", vruntime_0);
+      //vruntime_1 = vruntime_0 + (TIMESLICE/(get_priority(get_rbt_node_context(best_node))*CFS_ALPHA));
+      //set_vruntime(get_rbt_node_context(best_node), vruntime_1);
+      //printf("context %lu tiene vruntime %lu\n",get_id(get_rbt_node_context(best_node)), vruntime_1);
+
+      best_node = rbt_find_minimum();
+
+      to_context = get_rbt_node_context(best_node);
+
+      timeout = TIMESLICE;
     }
   }
 }

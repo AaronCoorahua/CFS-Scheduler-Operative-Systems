@@ -3,24 +3,22 @@ uint64_t* foo2;
 
 int main(int argc, char** argv) {
     uint64_t  tid;
+    
+    //alpha(1);
 
-    foo = "Hello MAIN!     ";
-    foo2 = "Hello FORK!     ";
+    foo = "Hello MAIN!  \n";
+    foo2 = "Hello FORK!  \n";
 
-    tid = fork();
+    sleep(10000000);
 
-    if (tid) {
-        while (*foo != 0) {
-            write(1, foo, 8);
-            foo = foo + 1;
-        }
+    //tid = fork();
+
+    /*if (tid) {
+        write(1, foo, 15);  
     }
     else {
-        while (*foo2 != 0) {
-            write(1, foo2, 8);
-            foo2 = foo2 + 1;
-        }
-    }
+        write(1, foo2, 15);
+    }*/
 
     return 1;
 }

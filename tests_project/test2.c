@@ -3,18 +3,25 @@ uint64_t* foo2;
 
 int main(int argc, char** argv) {
     uint64_t  tid;
+    
+    alpha(50);
 
-    sched_class(1);
-    foo = "Hello MAIN!  ";
-    foo2 = "Hello FORK!  ";
+    foo = "Hello MAIN!  \n";
+    foo2 = "Hello FORK!  \n";
 
     tid = fork();
 
     if (tid) {
-        write(1, foo, 13);
+        while(1){
+            priority(20);
+            write(1, foo, 15);
+        }
     }
     else {
-        write(1, foo2, 13);
+        while(1){
+            priority(40);
+            write(1, foo2, 15);
+        }
     }
 
     return 1;
