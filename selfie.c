@@ -12967,7 +12967,7 @@ void rbt_insert(uint64_t *node_to_insert) {
     uint64_t *y_node;
     uint64_t *x_node;
     uint64_t key_to_insert;
-    
+
     y_node = RBT_NIL;
     x_node = rbt_root;
     // Obtenemos el ID del contexto asociado al nodo que queremos insertar.
@@ -13009,9 +13009,12 @@ void rbt_insert(uint64_t *node_to_insert) {
 
 //rbt_delete: Elimina un nodo del árbol y llama a fixup para rebalancear.
 void rbt_delete(uint64_t *node_to_delete) {
-    uint64_t *y_node = node_to_delete;
+    uint64_t *y_node;
     uint64_t *x_node;
-    uint64_t y_original_color = get_rbt_node_color(y_node);
+    uint64_t y_original_color;
+
+    y_node = node_to_delete;
+    y_original_color = get_rbt_node_color(y_node);
 
     if (get_rbt_node_left(node_to_delete) == RBT_NIL) {
         x_node = get_rbt_node_right(node_to_delete);
@@ -13048,7 +13051,9 @@ void rbt_delete(uint64_t *node_to_delete) {
 //Busca y devuelve el nodo del árbol con la clave (ID) más pequeña. 
 //Esto se logra recorriendo el camino más a la izquierda desde la raíz.
 uint64_t *rbt_find_minimum() {
-    uint64_t *current_node = rbt_root;
+    uint64_t *current_node;
+
+    current_node = rbt_root;
     // Mientras el hijo izquierdo del nodo actual no sea el sentinela NIL,
     // seguimos descendiendo por la izquierda.
     while (get_rbt_node_left(current_node) != RBT_NIL) {
@@ -13062,11 +13067,14 @@ uint64_t *rbt_find_minimum() {
 // id_to_find -> El ID del machine_context que se está buscando.
 
 uint64_t *rbt_search_by_id(uint64_t id_to_find) {
-    uint64_t *current_node = rbt_root;
+    uint64_t *current_node;
+    uint64_t current_id;
+
+    current_node = rbt_root;
     // Empezamos desde la raíz y continuamos hasta llegar a una hoja NIL.
     while (current_node != RBT_NIL) {
         // Obtenemos el ID del contexto del nodo actual para comparar.
-        uint64_t current_id = get_id(get_rbt_node_context(current_node));
+        current_id = get_id(get_rbt_node_context(current_node));
         // Comparamos el ID buscado con el ID del nodo actual.
         if (id_to_find == current_id) {
             // Lo encontramos -> Devolvemos el puntero al nodo.
@@ -13086,6 +13094,7 @@ uint64_t *rbt_search_by_id(uint64_t id_to_find) {
     return RBT_NIL;
 }
 
+/*
 void print_rbt() {
     uint64_t MAX_TREE_HEIGHT = 98;
     uint64_t *node_stack[98]; 
@@ -13141,14 +13150,17 @@ void print_rbt() {
     
     printf("----------- FIN ÁRBOL DE CONTEXTOS ------------\n\n");
 }
+*/
 
-// Orquesta la eliminación de un machine_context Y su nodo RBT asociado.
+// Orquesta la creación de un machine_context Y su nodo RBT asociado.
 
 uint64_t *create_context_and_rbt_node(uint64_t *parent, uint64_t *vctxt) {
-    // Crea el machine_context.
-    uint64_t *new_machine_context = create_context(parent, vctxt);
+    uint64_t *new_machine_context;
+    uint64_t *new_rbt_node;
+    // Crea el machine_context
+    new_machine_context = create_context(parent, vctxt);
     // Crea un nodo para el RBT.
-    uint64_t *new_rbt_node = allocate_rbt_node();
+    new_rbt_node = allocate_rbt_node();
     // Vincula el nodo al contexto.
     set_rbt_node_context(new_rbt_node, new_machine_context);
     // Inserta el nuevo nodo en el árbol del planificador.
@@ -13164,7 +13176,9 @@ uint64_t *create_context_and_rbt_node(uint64_t *parent, uint64_t *vctxt) {
 
 void delete_rbt_node(uint64_t *context_to_delete)
 {
-    uint64_t *node_to_delete = rbt_search_by_id(get_id(context_to_delete));
+    uint64_t *node_to_delete;
+    
+    node_to_delete = rbt_search_by_id(get_id(context_to_delete));
 
     if (node_to_delete != RBT_NIL) {
         rbt_delete(node_to_delete);
@@ -13178,7 +13192,9 @@ void delete_rbt_node(uint64_t *context_to_delete)
 
 //left_rotate: Realiza una rotación a la izquierda sobre un rbt_node.
 void left_rotate(uint64_t *x_node) {
-    uint64_t *y_node = get_rbt_node_right(x_node);
+    uint64_t *y_node;
+    
+    y_node = get_rbt_node_right(x_node);
     set_rbt_node_right(x_node, get_rbt_node_left(y_node));
 
     if (get_rbt_node_left(y_node) != RBT_NIL)
@@ -13199,7 +13215,9 @@ void left_rotate(uint64_t *x_node) {
 
 //right_rotate: Realiza una rotación a la derecha sobre un rbt_node.
 void right_rotate(uint64_t *y_node) {
-    uint64_t *x_node = get_rbt_node_left(y_node);
+    uint64_t *x_node;
+    
+    x_node = get_rbt_node_left(y_node);
     set_rbt_node_left(y_node, get_rbt_node_right(x_node));
 
     if (get_rbt_node_right(x_node) != RBT_NIL)
