@@ -7730,6 +7730,7 @@ void store_word(uint64_t *memory, uint64_t waddr, uint64_t may_be_double_word, u
     *(memory + waddr / sizeof(uint64_t)) = word;
 }
 
+
 uint64_t load_instruction(uint64_t caddr)
 {
   return load_word(code_binary, caddr, 0);
@@ -13754,7 +13755,7 @@ uint64_t mipster(uint64_t *to_context)
 }
 */
 
-uint64_t SCALE_FACTOR = 2024;
+uint64_t SCALE_FACTOR = 1024;
 
 uint64_t mipster(uint64_t *to_context)
 {
