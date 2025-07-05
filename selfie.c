@@ -13744,7 +13744,7 @@ uint64_t mipster(uint64_t *to_context)
         if (to_context == (uint64_t *)0)
           to_context = used_contexts;
       } else 
-      { // when is Redb Black Tree Scheduler
+      { 
 
       }
 
@@ -13754,6 +13754,7 @@ uint64_t mipster(uint64_t *to_context)
 }
 */
 
+uint64_t SCALE_FACTOR = 2024;
 
 uint64_t mipster(uint64_t *to_context)
 {
@@ -13762,48 +13763,47 @@ uint64_t mipster(uint64_t *to_context)
   uint64_t *best_node;
   uint64_t vruntime_0;
   uint64_t vruntime_1;
-
-  to_context = get_rbt_node_context(rbt_find_minimum());
-  from_context = (uint64_t *)0; 
+  uint64_t start_instruction_count;
+  uint64_t executed_instructions;
 
   timeout = TIMESLICE;
 
+  best_node = rbt_find_minimum();
+
+  to_context = get_rbt_node_context(best_node);
+  
   while (1)
   {
 
-    //print_rbt();
+    rbt_delete(best_node);
 
+    start_instruction_count = global_ctr;
 
     from_context = mipster_switch(to_context, timeout);
 
-    best_node = rbt_find_minimum();
+    executed_instructions = global_ctr - start_instruction_count;
 
-    rbt_delete(best_node);
+    printf("Executed %lu: %lu",get_id(from_context), executed_instructions);
 
-    vruntime_0 = get_vruntime(get_rbt_node_context(best_node));
+    vruntime_0 = get_vruntime(from_context);
 
-    vruntime_1 = vruntime_0 + (TIMESLICE/(get_priority(get_rbt_node_context(best_node))*CFS_ALPHA));
-    set_vruntime(get_rbt_node_context(best_node), vruntime_1);
+    vruntime_1 = vruntime_0 + ((executed_instructions*SCALE_FACTOR)/(get_priority(from_context)*CFS_ALPHA));
+
+    min_vruntime = vruntime_1;
+
+    printf("Vruntime 1 process %lu: %lu",get_id(from_context), vruntime_1);
+
+    set_vruntime(from_context, vruntime_1);
 
     rbt_insert(best_node);
 
-    
-    if (get_parent(from_context) != MY_CONTEXT)
-    {
-      to_context = get_parent(from_context);
-      timeout = TIMEROFF;
-    }
-    else if (handle_exception(from_context) == EXIT)
+    if (handle_exception(from_context) == EXIT)
     {
       return get_exit_code(from_context);
     } 
     
     else 
     {
-      //printf("vruntime anterior: %lu\n", vruntime_0);
-      //vruntime_1 = vruntime_0 + (TIMESLICE/(get_priority(get_rbt_node_context(best_node))*CFS_ALPHA));
-      //set_vruntime(get_rbt_node_context(best_node), vruntime_1);
-      //printf("context %lu tiene vruntime %lu\n",get_id(get_rbt_node_context(best_node)), vruntime_1);
 
       best_node = rbt_find_minimum();
 

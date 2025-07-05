@@ -4,7 +4,7 @@ uint64_t* foo2;
 int main(int argc, char** argv) {
     uint64_t  tid;
     
-    alpha(50);
+    alpha(257);
 
     foo = "Hello MAIN!  \n";
     foo2 = "Hello FORK!  \n";
@@ -12,14 +12,14 @@ int main(int argc, char** argv) {
     tid = fork();
 
     if (tid) {
+        priority(10);
         while(1){
-            priority(20);
             write(1, foo, 15);
         }
     }
     else {
+        priority(80);
         while(1){
-            priority(40);
             write(1, foo2, 15);
         }
     }
