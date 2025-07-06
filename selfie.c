@@ -13095,7 +13095,7 @@ uint64_t *rbt_search_by_id(uint64_t id_to_find) {
     return RBT_NIL;
 }
 
-/*
+
 void print_rbt() {
     uint64_t MAX_TREE_HEIGHT = 98;
     uint64_t *node_stack[98]; 
@@ -13151,7 +13151,7 @@ void print_rbt() {
     
     printf("----------- FIN ÁRBOL DE CONTEXTOS ------------\n\n");
 }
-*/
+
 
 // Orquesta la creación de un machine_context Y su nodo RBT asociado.
 
@@ -13784,15 +13784,15 @@ uint64_t mipster(uint64_t *to_context)
 
     executed_instructions = global_ctr - start_instruction_count;
 
-    printf("Executed %lu: %lu",get_id(from_context), executed_instructions);
+    //printf("Executed %lu: %lu",get_id(from_context), executed_instructions);
 
     vruntime_0 = get_vruntime(from_context);
 
     vruntime_1 = vruntime_0 + ((executed_instructions*SCALE_FACTOR)/(get_priority(from_context)*CFS_ALPHA));
 
-    min_vruntime = vruntime_1;
+    //min_vruntime = vruntime_1;
 
-    printf("Vruntime 1 process %lu: %lu",get_id(from_context), vruntime_1);
+    //printf("Vruntime 1 process %lu: %lu",get_id(from_context), vruntime_1);
 
     set_vruntime(from_context, vruntime_1);
 
@@ -13811,6 +13811,8 @@ uint64_t mipster(uint64_t *to_context)
       to_context = get_rbt_node_context(best_node);
 
       timeout = TIMESLICE;
+
+      print_rbt();
     }
   }
 }
