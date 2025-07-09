@@ -201,6 +201,7 @@ uint64_t non_0_boot_level_dprintf(uint64_t fd, char *format, ...);
 
 uint64_t printf_or_write(uint64_t length);
 
+
 // selfie's malloc interface
 
 uint64_t round_up(uint64_t n, uint64_t m);
@@ -1361,6 +1362,7 @@ uint64_t SYSCALL_ALPHA = 12;
    emulating the (in Linux) deprecated open system call. */
 
 uint64_t DIRFD_AT_FDCWD = -100;
+uint64_t MAX_TREE_HEIGHT = 98;
 
 // ------------------------ GLOBAL VARIABLES -----------------------
 
@@ -2502,7 +2504,7 @@ uint64_t *rbt_find_minimum();
 // Busca un nodo en el árbol por el ID de su contexto y devuelve el NODO.
 uint64_t *rbt_search_by_id(uint64_t id_to_find);
 // Imprime una representación visual del árbol.
-void print_rbt();
+//void print_rbt();
 // Orquesta la creación de un machine_context Y su nodo RBT asociado.
 uint64_t *create_context_and_rbt_node(uint64_t *parent, uint64_t *vctxt);
 
@@ -12964,6 +12966,8 @@ void rbt_init() {
     free_rbt_nodes = (uint64_t *)0;
 }
 
+uint64_t* get_rbt_node_context(uint64_t* node);
+
 //rbt_insert: Inserta un rbt_node en el árbol, usando el ID del contexto como clave.
 void rbt_insert(uint64_t *node_to_insert) {
     uint64_t *y_node;
@@ -12974,7 +12978,7 @@ void rbt_insert(uint64_t *node_to_insert) {
     x_node = rbt_root;
     // Obtenemos el ID del contexto asociado al nodo que queremos insertar.
     // Esta será nuestra clave de ordenación.
-    key_to_insert = get_vruntime((get_rbt_node_context)(node_to_insert));
+    key_to_insert = get_vruntime(get_rbt_node_context(node_to_insert));
 
     // Recorremos el árbol para encontrar la hoja correcta donde insertar.
     while (x_node != RBT_NIL) {
@@ -13096,11 +13100,11 @@ uint64_t *rbt_search_by_id(uint64_t id_to_find) {
     return RBT_NIL;
 }
 
-
+/*
 void print_rbt() {
-    uint64_t MAX_TREE_HEIGHT = 98;
-    uint64_t *node_stack[98]; 
-    uint64_t depth_stack[98]; 
+    uint64_t** node_stack = (uint64_t**) malloc(98 * sizeof(uint64_t*));
+    uint64_t* depth_stack = (uint64_t*) malloc(98 * sizeof(uint64_t));
+
     
     uint64_t stack_top = 0;
     
@@ -13153,6 +13157,7 @@ void print_rbt() {
     printf("----------- FIN ÁRBOL DE CONTEXTOS ------------\n\n");
 }
 
+*/
 
 // Orquesta la creación de un machine_context Y su nodo RBT asociado.
 
@@ -13293,62 +13298,91 @@ void rbt_transplant(uint64_t *u_node, uint64_t *v_node) {
     set_rbt_node_parent(v_node, get_rbt_node_parent(u_node));
 }
 
-//rbt_delete_fixup: Restaura las propiedades del RBT después de un borrado.
+
+// rbt_delete_fixup: Restaura las propiedades del RBT después de un borrado.
 void rbt_delete_fixup(uint64_t *x_node) {
     uint64_t *w_node;
-    while (x_node != rbt_root && get_rbt_node_color(x_node) == RBT_BLACK) {
-        if (x_node == get_rbt_node_left(get_rbt_node_parent(x_node))) {
-            w_node = get_rbt_node_right(get_rbt_node_parent(x_node));
-            if (get_rbt_node_color(w_node) == RBT_RED) {
-                set_rbt_node_color(w_node, RBT_BLACK);
-                set_rbt_node_color(get_rbt_node_parent(x_node), RBT_RED);
-                left_rotate(get_rbt_node_parent(x_node));
+
+    while (x_node != rbt_root) {
+        if (get_rbt_node_color(x_node) == RBT_BLACK) {
+
+            if (x_node == get_rbt_node_left(get_rbt_node_parent(x_node))) {
                 w_node = get_rbt_node_right(get_rbt_node_parent(x_node));
-            }
-            if (get_rbt_node_color(get_rbt_node_left(w_node)) == RBT_BLACK && get_rbt_node_color(get_rbt_node_right(w_node)) == RBT_BLACK) {
-                set_rbt_node_color(w_node, RBT_RED);
-                x_node = get_rbt_node_parent(x_node);
-            } else {
-                if (get_rbt_node_color(get_rbt_node_right(w_node)) == RBT_BLACK) {
-                    set_rbt_node_color(get_rbt_node_left(w_node), RBT_BLACK);
-                    set_rbt_node_color(w_node, RBT_RED);
-                    right_rotate(w_node);
+
+                if (get_rbt_node_color(w_node) == RBT_RED) {
+                    set_rbt_node_color(w_node, RBT_BLACK);
+                    set_rbt_node_color(get_rbt_node_parent(x_node), RBT_RED);
+                    left_rotate(get_rbt_node_parent(x_node));
                     w_node = get_rbt_node_right(get_rbt_node_parent(x_node));
                 }
-                set_rbt_node_color(w_node, get_rbt_node_color(get_rbt_node_parent(x_node)));
-                set_rbt_node_color(get_rbt_node_parent(x_node), RBT_BLACK);
-                set_rbt_node_color(get_rbt_node_right(w_node), RBT_BLACK);
-                left_rotate(get_rbt_node_parent(x_node));
-                x_node = rbt_root;
-            }
-        } else {
-            w_node = get_rbt_node_left(get_rbt_node_parent(x_node));
-            if (get_rbt_node_color(w_node) == RBT_RED) {
-                set_rbt_node_color(w_node, RBT_BLACK);
-                set_rbt_node_color(get_rbt_node_parent(x_node), RBT_RED);
-                right_rotate(get_rbt_node_parent(x_node));
-                w_node = get_rbt_node_left(get_rbt_node_parent(x_node));
-            }
-            if (get_rbt_node_color(get_rbt_node_right(w_node)) == RBT_BLACK && get_rbt_node_color(get_rbt_node_left(w_node)) == RBT_BLACK) {
-                set_rbt_node_color(w_node, RBT_RED);
-                x_node = get_rbt_node_parent(x_node);
-            } else {
+
                 if (get_rbt_node_color(get_rbt_node_left(w_node)) == RBT_BLACK) {
+                    if (get_rbt_node_color(get_rbt_node_right(w_node)) == RBT_BLACK) {
+                        set_rbt_node_color(w_node, RBT_RED);
+                        x_node = get_rbt_node_parent(x_node);
+                    } else {
+                        set_rbt_node_color(get_rbt_node_left(w_node), RBT_BLACK);
+                        set_rbt_node_color(w_node, RBT_RED);
+                        right_rotate(w_node);
+                        w_node = get_rbt_node_right(get_rbt_node_parent(x_node));
+
+                        set_rbt_node_color(w_node, get_rbt_node_color(get_rbt_node_parent(x_node)));
+                        set_rbt_node_color(get_rbt_node_parent(x_node), RBT_BLACK);
+                        set_rbt_node_color(get_rbt_node_right(w_node), RBT_BLACK);
+                        left_rotate(get_rbt_node_parent(x_node));
+                        x_node = rbt_root;
+                    }
+                } else {
+                    set_rbt_node_color(w_node, get_rbt_node_color(get_rbt_node_parent(x_node)));
+                    set_rbt_node_color(get_rbt_node_parent(x_node), RBT_BLACK);
                     set_rbt_node_color(get_rbt_node_right(w_node), RBT_BLACK);
-                    set_rbt_node_color(w_node, RBT_RED);
-                    left_rotate(w_node);
+                    left_rotate(get_rbt_node_parent(x_node));
+                    x_node = rbt_root;
+                }
+
+            } else {
+                w_node = get_rbt_node_left(get_rbt_node_parent(x_node));
+
+                if (get_rbt_node_color(w_node) == RBT_RED) {
+                    set_rbt_node_color(w_node, RBT_BLACK);
+                    set_rbt_node_color(get_rbt_node_parent(x_node), RBT_RED);
+                    right_rotate(get_rbt_node_parent(x_node));
                     w_node = get_rbt_node_left(get_rbt_node_parent(x_node));
                 }
-                set_rbt_node_color(w_node, get_rbt_node_color(get_rbt_node_parent(x_node)));
-                set_rbt_node_color(get_rbt_node_parent(x_node), RBT_BLACK);
-                set_rbt_node_color(get_rbt_node_left(w_node), RBT_BLACK);
-                right_rotate(get_rbt_node_parent(x_node));
-                x_node = rbt_root;
+
+                if (get_rbt_node_color(get_rbt_node_right(w_node)) == RBT_BLACK) {
+                    if (get_rbt_node_color(get_rbt_node_left(w_node)) == RBT_BLACK) {
+                        set_rbt_node_color(w_node, RBT_RED);
+                        x_node = get_rbt_node_parent(x_node);
+                    } else {
+                        set_rbt_node_color(get_rbt_node_right(w_node), RBT_BLACK);
+                        set_rbt_node_color(w_node, RBT_RED);
+                        left_rotate(w_node);
+                        w_node = get_rbt_node_left(get_rbt_node_parent(x_node));
+
+                        set_rbt_node_color(w_node, get_rbt_node_color(get_rbt_node_parent(x_node)));
+                        set_rbt_node_color(get_rbt_node_parent(x_node), RBT_BLACK);
+                        set_rbt_node_color(get_rbt_node_left(w_node), RBT_BLACK);
+                        right_rotate(get_rbt_node_parent(x_node));
+                        x_node = rbt_root;
+                    }
+                } else {
+                    set_rbt_node_color(w_node, get_rbt_node_color(get_rbt_node_parent(x_node)));
+                    set_rbt_node_color(get_rbt_node_parent(x_node), RBT_BLACK);
+                    set_rbt_node_color(get_rbt_node_left(w_node), RBT_BLACK);
+                    right_rotate(get_rbt_node_parent(x_node));
+                    x_node = rbt_root;
+                }
             }
+
+        } else {
+            x_node = rbt_root; // fuerza salida del while si no es negro
         }
     }
+
     set_rbt_node_color(x_node, RBT_BLACK);
 }
+
 
 // -----------------------------------------------------------------
 // ---------------------------- KERNEL -----------------------------
