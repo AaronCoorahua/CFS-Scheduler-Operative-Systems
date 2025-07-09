@@ -2291,12 +2291,13 @@ uint64_t *delete_context(uint64_t *context, uint64_t *from);
 // | 33 | ptr_parent      | pointer to parent
 // | 34 | priority        | context priority
 // | 35 | vruntime        | virtual runtime
+// | 36 | rbt_node        | node associated
 // +----+-----------------+
 
 // number of entries of a machine context:
 // 14 uint64_t + 6 uint64_t* + 1 char* + 7 uint64_t + 2 uint64_t* + 2 uint64_t entries
 // extended in the symbolic execution engine and the Boehm garbage collector
-uint64_t CONTEXTENTRIES = 36;
+uint64_t CONTEXTENTRIES = 37;
 
 uint64_t *allocate_context(); // declaration avoids warning in the Boehm garbage collector
 
@@ -2344,6 +2345,7 @@ uint64_t id(uint64_t *context) { return (uint64_t)(context + 32); }
 uint64_t ptr_parent(uint64_t *context) { return (uint64_t)(context + 33); }
 uint64_t priority(uint64_t *context) { return (uint64_t)(context + 34); }
 uint64_t vruntime(uint64_t *context) { return (uint64_t)(context + 35); }
+uint64_t rbt_node(uint64_t *context) { return (uint64_t)(context + 36); }
 
 uint64_t *get_next_context(uint64_t *context) { return (uint64_t *)*context; }
 uint64_t *get_prev_context(uint64_t *context) { return (uint64_t *)*(context + 1); }
@@ -2384,6 +2386,7 @@ uint64_t get_id(uint64_t *context) { return *(context + 32); }
 uint64_t* get_ptr_parent(uint64_t *context) { return (uint64_t *)*(context + 33); }
 uint64_t get_priority(uint64_t *context) { return *(context + 34); }
 uint64_t get_vruntime(uint64_t *context) { return *(context + 35); }
+uint64_t *get_context_rbt_node(uint64_t *context) { return (uint64_t *)*(context + 36); }
 
 void set_next_context(uint64_t *context, uint64_t *next) { *context = (uint64_t)next; }
 void set_prev_context(uint64_t *context, uint64_t *prev) { *(context + 1) = (uint64_t)prev; }
@@ -2424,6 +2427,7 @@ void set_id(uint64_t *context, uint64_t new_pid) { *(context + 32) = new_pid; }
 void set_ptr_parent(uint64_t *context, uint64_t* parent) { *(context + 33) = (uint64_t)parent; }
 void set_priority(uint64_t *context, uint64_t p) { *(context + 34) = p; }
 void set_vruntime(uint64_t *context, uint64_t vr) { *(context + 35) = vr; }
+void set_context_rbt_node(uint64_t *context, uint64_t *rn) { *(context + 36) = (uint64_t)rn; }
 
 // -----------------------------------------------------------------
 // ---------------------- RED BLACK TREE NODE ----------------------
@@ -2573,7 +2577,7 @@ void reset_microkernel()
   current_context = (uint64_t *)0;
 
   while (used_contexts != (uint64_t *)0){
-    delete_rbt_node(used_contexts);
+    rbt_delete(get_context_rbt_node(used_contexts));
     used_contexts = delete_context(used_contexts, used_contexts);
   }
 }
@@ -8392,9 +8396,6 @@ void implement_exit(uint64_t *context)
 
   set_exit_code(context, sign_shrink(signed_int_exit_code, SYSCALL_BITWIDTH));
 
-  used_contexts = delete_context(context, used_contexts);
-  delete_rbt_node(context);
-
 }
 
 void emit_get_pid()
@@ -12973,7 +12974,7 @@ void rbt_insert(uint64_t *node_to_insert) {
     x_node = rbt_root;
     // Obtenemos el ID del contexto asociado al nodo que queremos insertar.
     // Esta será nuestra clave de ordenación.
-    key_to_insert = get_vruntime(get_rbt_node_context(node_to_insert));
+    key_to_insert = get_vruntime((get_rbt_node_context)(node_to_insert));
 
     // Recorremos el árbol para encontrar la hoja correcta donde insertar.
     while (x_node != RBT_NIL) {
@@ -13164,6 +13165,7 @@ uint64_t *create_context_and_rbt_node(uint64_t *parent, uint64_t *vctxt) {
     new_rbt_node = allocate_rbt_node();
     // Vincula el nodo al contexto.
     set_rbt_node_context(new_rbt_node, new_machine_context);
+    set_context_rbt_node(new_machine_context, new_rbt_node);
     // Inserta el nuevo nodo en el árbol del planificador.
     rbt_insert(new_rbt_node);
     // Devolvemos el contexto.
@@ -13570,6 +13572,8 @@ void up_load_arguments(uint64_t *context, uint64_t argc, uint64_t *argv)
 uint64_t handle_system_call(uint64_t *context)
 {
   uint64_t a7;
+  uint64_t *prev;
+  uint64_t *next;
 
   set_exception(context, EXCEPTION_NOEXCEPTION);
 
@@ -13593,9 +13597,28 @@ uint64_t handle_system_call(uint64_t *context)
   else if (a7 == SYSCALL_EXIT)
   {
     implement_exit(context);
+
+    //printf("Proceso: %lu Terminó\n", get_id(context));
+
+    prev = get_prev_context(context);
+    next = get_next_context(context);
+    // Eliminamos el contexto actual de la lista de used_contexts.
+    if (prev)
+        set_next_context(prev, next);
+    else
+        used_contexts = next;
+
+    if (next)
+        set_prev_context(next, prev);
     //print_rbt();
-    if (used_contexts == (uint64_t *) 0)
-		return EXIT;
+
+    rbt_delete(get_context_rbt_node(context));
+
+    //printf("Lista: %lu", (uint64_t)used_contexts);
+
+    if (used_contexts == (uint64_t *) 0){
+      return EXIT;
+    }
   } else if (a7 == SYSCALL_ID)
     implement_get_pid(context);
   else if (a7 == SYSCALL_FORK)
@@ -13755,6 +13778,17 @@ uint64_t mipster(uint64_t *to_context)
 }
 */
 
+uint64_t rbt_is_node_in_tree(uint64_t* node) {
+
+    if (get_rbt_node_parent(node) != (uint64_t*) 0)
+        return 1; 
+    
+    if (rbt_root == node) 
+        return 1;
+
+    return 0;
+}
+
 uint64_t SCALE_FACTOR = 1024;
 
 uint64_t mipster(uint64_t *to_context)
@@ -13762,6 +13796,7 @@ uint64_t mipster(uint64_t *to_context)
   uint64_t timeout;
   uint64_t *from_context;
   uint64_t *best_node;
+  uint64_t *actual_node;
   uint64_t vruntime_0;
   uint64_t vruntime_1;
   uint64_t start_instruction_count;
@@ -13774,45 +13809,55 @@ uint64_t mipster(uint64_t *to_context)
   to_context = get_rbt_node_context(best_node);
   
   while (1)
-  {
-
-    rbt_delete(best_node);
+  { 
 
     start_instruction_count = global_ctr;
 
+    //printf("Proceso: %lu ejecutando\n", get_id(to_context));
+
     from_context = mipster_switch(to_context, timeout);
+
+    actual_node = get_context_rbt_node(from_context);
 
     executed_instructions = global_ctr - start_instruction_count;
 
-    //printf("Executed %lu: %lu",get_id(from_context), executed_instructions);
+    //printf("\nExecuted %lu: %lu\n",get_id(from_context), executed_instructions);
 
-    vruntime_0 = get_vruntime(from_context);
+    if (get_parent(from_context) != MY_CONTEXT)
+    {
+      // switch to parent which is in charge of handling exceptions
+      to_context = get_parent(from_context);
 
-    vruntime_1 = vruntime_0 + ((executed_instructions*SCALE_FACTOR)/(get_priority(from_context)*CFS_ALPHA));
+      timeout = TIMEROFF;
+    }
 
-    //min_vruntime = vruntime_1;
-
-    //printf("Vruntime 1 process %lu: %lu",get_id(from_context), vruntime_1);
-
-    set_vruntime(from_context, vruntime_1);
-
-    rbt_insert(best_node);
-
-    if (handle_exception(from_context) == EXIT)
+    else if (handle_exception(from_context) == EXIT)
     {
       return get_exit_code(from_context);
     } 
     
     else 
     {
+      if (rbt_is_node_in_tree(actual_node)){
+
+          rbt_delete(actual_node);
+
+          vruntime_0 = get_vruntime(from_context);
+
+          vruntime_1 = vruntime_0 + ((executed_instructions*SCALE_FACTOR)/(get_priority(from_context)*CFS_ALPHA));
+
+          set_vruntime(from_context, vruntime_1);
+
+          rbt_insert(actual_node);
+      }
 
       best_node = rbt_find_minimum();
+
+      min_vruntime = (get_vruntime(get_rbt_node_context(best_node)));
 
       to_context = get_rbt_node_context(best_node);
 
       timeout = TIMESLICE;
-
-      print_rbt();
     }
   }
 }
