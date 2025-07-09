@@ -2291,7 +2291,7 @@ uint64_t *delete_context(uint64_t *context, uint64_t *from);
 // +----+-----------------+
 // | 32 | id              | process id
 // | 33 | ptr_parent      | pointer to parent
-// | 34 | priority        | context priority
+// | 34 | priority_ctxt   | context priority
 // | 35 | vruntime        | virtual runtime
 // | 36 | rbt_node        | node associated
 // +----+-----------------+
@@ -2345,7 +2345,7 @@ uint64_t gcs_in_period(uint64_t *context) { return (uint64_t)(context + 30); }
 uint64_t use_gc_kernel(uint64_t *context) { return (uint64_t)(context + 31); }
 uint64_t id(uint64_t *context) { return (uint64_t)(context + 32); }
 uint64_t ptr_parent(uint64_t *context) { return (uint64_t)(context + 33); }
-uint64_t priority(uint64_t *context) { return (uint64_t)(context + 34); }
+uint64_t priority_ctxt(uint64_t *context) { return (uint64_t)(context + 34); }
 uint64_t vruntime(uint64_t *context) { return (uint64_t)(context + 35); }
 uint64_t rbt_node(uint64_t *context) { return (uint64_t)(context + 36); }
 
@@ -8467,10 +8467,10 @@ void emit_priority(){
 }
 
 void implement_priority(uint64_t *context){
-  uint64_t priority;
+  uint64_t priority_user;
 
-  priority = *(get_regs(context)+REG_A0);
-  set_priority(context, priority);
+  priority_user = *(get_regs(context)+REG_A0);
+  set_priority(context, priority_user);
   //printf("La nueva prioridad es %lu \n", get_priority(context));
   set_pc(context,get_pc(context)+INSTRUCTIONSIZE);  
 
